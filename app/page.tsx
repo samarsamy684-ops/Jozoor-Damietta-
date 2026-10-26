@@ -7,8 +7,11 @@ import {
   Globe2,
   Heart,
   Menu,
+  PackageCheck,
+  Plus,
   Search,
   ShieldCheck,
+  ShoppingBag,
   Sparkles,
   Star,
   Truck,
@@ -26,6 +29,7 @@ const products = [
     price: 'EGP 18,500',
     image: 'https://images.unsplash.com/photo-1567538096630-e0c55bd6374c?auto=format&fit=crop&w=900&q=85',
     color: 'bg-[#e8dfd3]',
+    availability: 'In stock',
   },
   {
     name: 'Nile Oak Dining Set',
@@ -64,6 +68,8 @@ export default function Page() {
   const [query, setQuery] = useState('')
   const [menuOpen, setMenuOpen] = useState(false)
   const [favorites, setFavorites] = useState<string[]>([])
+  const [viewMode, setViewMode] = useState<'customer' | 'vendor'>('customer')
+  const [cart, setCart] = useState<string[]>([])
 
   const filteredProducts = useMemo(() => products.filter((product) => {
     const matchesCategory = activeCategory === 'All furniture' || product.category === activeCategory
@@ -90,6 +96,10 @@ export default function Page() {
             <a href="#story" className="transition-colors hover:text-[#1f3b36]">Our story</a>
           </nav>
           <div className="flex items-center gap-3">
+            <div className="hidden rounded-full border border-[#dfdfd6] bg-white p-1 sm:flex" aria-label="Platform view">
+              <button onClick={() => setViewMode('customer')} className={`rounded-full px-3 py-1.5 text-xs font-semibold ${viewMode === 'customer' ? 'bg-[#1f3b36] text-white' : 'text-[#65675f]'}`}>Shop</button>
+              <button onClick={() => setViewMode('vendor')} className={`rounded-full px-3 py-1.5 text-xs font-semibold ${viewMode === 'vendor' ? 'bg-[#1f3b36] text-white' : 'text-[#65675f]'}`}>For makers</button>
+            </div>
             <button className="hidden items-center gap-2 rounded-full px-3 py-2 text-sm font-medium text-[#65675f] transition hover:bg-white sm:flex" aria-label="Choose language">
               <Globe2 data-icon="inline-start" /> EN <ChevronDown data-icon="inline-end" />
             </button>
@@ -103,6 +113,7 @@ export default function Page() {
       </header>
 
       <main id="top">
+        {viewMode === 'vendor' && <section className="border-b border-[#dfdfd6] bg-[#e8c98b]/30 py-8"><div className="mx-auto flex max-w-[1240px] flex-col gap-5 px-5 sm:flex-row sm:items-center sm:justify-between lg:px-8"><div><p className="text-xs font-bold uppercase tracking-[0.18em] text-[#8b682e]">Maker workspace</p><h2 className="mt-2 font-serif text-3xl text-[#1f3b36]">Bring your next piece to the world.</h2><p className="mt-1 text-sm text-[#686a61]">Create a workshop profile and list products for customers across Egypt.</p></div><button className="inline-flex items-center justify-center gap-2 rounded-full bg-[#1f3b36] px-5 py-3 text-sm font-semibold text-white"><Plus data-icon="inline-start" /> Add a product</button></div></section>}
         <section className="mx-auto grid max-w-[1240px] items-center gap-12 px-5 pb-20 pt-16 lg:grid-cols-[0.94fr_1.06fr] lg:px-8 lg:pb-28 lg:pt-24">
           <div className="max-w-xl">
             <div className="mb-7 flex items-center gap-3 text-xs font-bold uppercase tracking-[0.18em] text-[#ba8c42]"><span className="h-px w-9 bg-[#ba8c42]" /> The heart of Egyptian furniture</div>
@@ -126,7 +137,7 @@ export default function Page() {
           <div className="mx-auto max-w-[1240px] px-5 lg:px-8">
             <div className="flex flex-col justify-between gap-7 md:flex-row md:items-end"><div><p className="text-xs font-bold uppercase tracking-[0.18em] text-[#ba8c42]">Curated for you</p><h2 className="mt-3 font-serif text-4xl tracking-tight text-[#1f3b36] md:text-5xl">Find your next <em className="font-normal text-[#b4823e]">heirloom.</em></h2></div><div className="relative w-full md:w-64"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[#8b8c83]" /><input value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Search furniture" placeholder="Search furniture..." suppressHydrationWarning className="w-full rounded-full border border-[#d8d8ce] bg-[#f8f7f3] py-3 pl-11 pr-4 text-sm outline-none transition focus:border-[#1f3b36]" /></div></div>
             <div className="mt-9 flex gap-2 overflow-x-auto pb-2" role="tablist" aria-label="Furniture categories">{categories.map((category) => <button key={category} role="tab" aria-selected={activeCategory === category} onClick={() => setActiveCategory(category)} className={`whitespace-nowrap rounded-full px-5 py-2.5 text-sm font-medium transition ${activeCategory === category ? 'bg-[#1f3b36] text-white' : 'border border-[#d6d6cc] text-[#686a61] hover:bg-white'}`}>{category}</button>)}</div>
-            <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">{filteredProducts.map((product) => <article key={product.name} className="group"><div className={`relative aspect-[0.92] overflow-hidden rounded-2xl ${product.color}`}><img src={product.image} alt={product.name} className="size-full object-cover transition duration-500 group-hover:scale-105" /><button onClick={() => setFavorites((items) => items.includes(product.name) ? items.filter((item) => item !== product.name) : [...items, product.name])} className="absolute right-3 top-3 flex size-9 items-center justify-center rounded-full bg-white/85 text-[#1f3b36] backdrop-blur-sm" aria-label={`Save ${product.name}`}>{<Heart fill={favorites.includes(product.name) ? 'currentColor' : 'none'} className={favorites.includes(product.name) ? 'text-[#b4823e]' : ''} />}</button><span className="absolute bottom-3 left-3 rounded-full bg-white/90 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-[#1f3b36]">{product.category}</span></div><div className="mt-4 flex items-start justify-between gap-3"><div><h3 className="font-serif text-xl text-[#1f3b36]">{product.name}</h3><p className="mt-1 text-sm text-[#777970]">by {product.maker}</p></div><p className="whitespace-nowrap pt-1 text-sm font-semibold text-[#b4823e]">{product.price}</p></div></article>)}</div>
+            <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">{filteredProducts.map((product) => <article key={product.name} className="group"><div className={`relative aspect-[0.92] overflow-hidden rounded-2xl ${product.color}`}><img src={product.image} alt={product.name} className="size-full object-cover transition duration-500 group-hover:scale-105" /><button onClick={() => setFavorites((items) => items.includes(product.name) ? items.filter((item) => item !== product.name) : [...items, product.name])} className="absolute right-3 top-3 flex size-9 items-center justify-center rounded-full bg-white/85 text-[#1f3b36] backdrop-blur-sm" aria-label={`Save ${product.name}`}>{<Heart fill={favorites.includes(product.name) ? 'currentColor' : 'none'} className={favorites.includes(product.name) ? 'text-[#b4823e]' : ''} />}</button><span className="absolute bottom-3 left-3 rounded-full bg-white/90 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-[#1f3b36]">{product.category}</span></div><div className="mt-4 flex items-start justify-between gap-3"><div><h3 className="font-serif text-xl text-[#1f3b36]">{product.name}</h3><p className="mt-1 text-sm text-[#777970]">by {product.maker}</p></div><p className="whitespace-nowrap pt-1 text-sm font-semibold text-[#b4823e]">{product.price}</p></div><div className="mt-4 flex items-center justify-between gap-2"><span className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#3b765d]"><PackageCheck data-icon="inline-start" />{product.availability ?? 'Made to order'}</span>{viewMode === 'customer' && <button onClick={() => setCart((items) => items.includes(product.name) ? items : [...items, product.name])} className="inline-flex items-center gap-1.5 rounded-full bg-[#1f3b36] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#2d5049]"><ShoppingBag data-icon="inline-start" />{cart.includes(product.name) ? 'Added' : 'Add to cart'}</button>}</div></article>)}</div>
             {filteredProducts.length === 0 && <p className="py-14 text-center text-[#777970]">No pieces found. Try a different search.</p>}
             <div className="mt-12 text-center"><button className="inline-flex items-center gap-2 text-sm font-semibold text-[#1f3b36] underline decoration-[#d2ad6f] underline-offset-8">View all furniture <ArrowRight /></button></div>
           </div>
