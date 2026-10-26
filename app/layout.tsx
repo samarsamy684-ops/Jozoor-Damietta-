@@ -3,7 +3,7 @@ import type { Metadata, Viewport } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'Sandoq — Made in Damietta',
+  title: 'Jozoor Damietta — Made in Damietta',
   description: 'Discover beautiful, handcrafted furniture made by independent workshops in Damietta, Egypt.',
   generator: 'v0.app',
   icons: {
