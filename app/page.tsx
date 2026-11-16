@@ -1,14 +1,17 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState, type FormEvent } from 'react'
+import useSWR from 'swr'
 import {
   ArrowRight,
   ChevronDown,
   Globe2,
   Heart,
   Menu,
+  PackageCheck,
   Search,
   ShieldCheck,
+  ShoppingBag,
   Sparkles,
   Star,
   Truck,
@@ -18,7 +21,34 @@ import {
 
 const categories = ['All furniture', 'Living room', 'Dining', 'Bedroom', 'Office']
 
-const products = [
+type Product = {
+  id?: string
+  name: string
+  maker: string
+  category: string
+  price?: string
+  image: string
+  color: string
+  quantity?: number
+  availability?: string
+  description?: string
+  imageIsFallback?: boolean
+}
+
+const fetcher = async (url: string): Promise<Product[]> => {
+  const response = await fetch(url)
+  if (!response.ok) throw new Error('Could not load published products.')
+  return response.json()
+}
+
+const fallbackImages: Record<string, string> = {
+  'Living room': 'https://images.unsplash.com/photo-1567538096630-e0c55bd6374c?auto=format&fit=crop&w=900&q=85',
+  Dining: 'https://images.unsplash.com/photo-1618220179428-22790b461013?auto=format&fit=crop&w=900&q=85',
+  Bedroom: 'https://images.unsplash.com/photo-1505693416388-ac5ce068fe85?auto=format&fit=crop&w=900&q=85',
+  Office: 'https://images.unsplash.com/photo-1518455027359-f3f8164ba6bd?auto=format&fit=crop&w=900&q=85',
+}
+
+const initialProducts: Product[] = [
   {
     name: 'Marsa Lounge Chair',
     maker: 'El Nasr Workshop',
@@ -26,6 +56,8 @@ const products = [
     price: 'EGP 18,500',
     image: 'https://images.unsplash.com/photo-1567538096630-e0c55bd6374c?auto=format&fit=crop&w=900&q=85',
     color: 'bg-[#e8dfd3]',
+    availability: 'In stock',
+    quantity: 5,
   },
   {
     name: 'Nile Oak Dining Set',
@@ -34,6 +66,8 @@ const products = [
     price: 'EGP 42,000',
     image: 'https://images.unsplash.com/photo-1618220179428-22790b461013?auto=format&fit=crop&w=900&q=85',
     color: 'bg-[#dce2dc]',
+    availability: 'In stock · 8',
+    quantity: 8,
   },
   {
     name: 'Sahara Side Table',
@@ -42,6 +76,8 @@ const products = [
     price: 'EGP 6,800',
     image: 'https://images.unsplash.com/photo-1532372320572-cda25653a26d?auto=format&fit=crop&w=900&q=85',
     color: 'bg-[#e7e0d6]',
+    availability: 'In stock · 12',
+    quantity: 12,
   },
   {
     name: 'Cairo Cane Bed',
@@ -50,6 +86,18 @@ const products = [
     price: 'EGP 31,500',
     image: 'https://images.unsplash.com/photo-1505693416388-ac5ce068fe85?auto=format&fit=crop&w=900&q=85',
     color: 'bg-[#e2ded7]',
+    availability: 'In stock · 3',
+    quantity: 3,
+  },
+  {
+    name: 'Workshop Writing Desk',
+    maker: 'Said El Sherbiny',
+    category: 'Office',
+    price: 'EGP 22,000',
+    image: 'https://images.unsplash.com/photo-1518455027359-f3f8164ba6bd?auto=format&fit=crop&w=900&q=85',
+    color: 'bg-[#e2ded7]',
+    availability: 'In stock · 4',
+    quantity: 4,
   },
 ]
 
@@ -64,23 +112,64 @@ export default function Page() {
   const [query, setQuery] = useState('')
   const [menuOpen, setMenuOpen] = useState(false)
   const [favorites, setFavorites] = useState<string[]>([])
+  const [viewMode, setViewMode] = useState<'customer' | 'vendor'>('customer')
+  const [cart, setCart] = useState<string[]>([])
+  const [workshopMessage, setWorkshopMessage] = useState('')
+  const [workshopError, setWorkshopError] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [attachmentNames, setAttachmentNames] = useState<string[]>([])
+  const formRef = useRef<HTMLFormElement>(null)
+  const { data: approvedProducts = [] } = useSWR<Product[]>('/api/products', fetcher, { fallbackData: [] })
+
+  const products = useMemo(() => [
+    ...initialProducts,
+    ...approvedProducts.map((product) => ({
+      ...product,
+      image: product.image || fallbackImages[product.category] || fallbackImages['Living room'],
+      imageIsFallback: product.imageIsFallback,
+      color: product.color || 'bg-[#e8dfd3]',
+      availability: product.quantity === undefined ? 'Available' : product.quantity > 0 ? `In stock · ${product.quantity}` : 'Out of stock',
+    })),
+  ], [approvedProducts])
+
+  const handleWorkshopSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    const form = event.currentTarget
+    setWorkshopMessage('')
+    setWorkshopError('')
+    setIsSubmitting(true)
+
+    try {
+      const response = await fetch('/api/workshops', { method: 'POST', body: new FormData(form) })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error || 'We could not submit your request.')
+
+      setWorkshopMessage(`Request received: ${result.productCount} product${result.productCount === 1 ? '' : 's'} are saved privately and will appear after admin approval.`)
+      form.reset()
+      setAttachmentNames([])
+    } catch (error) {
+      setWorkshopError(error instanceof Error ? error.message : 'We could not submit your request. Please try again.')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
 
   const filteredProducts = useMemo(() => products.filter((product) => {
     const matchesCategory = activeCategory === 'All furniture' || product.category === activeCategory
     const matchesQuery = `${product.name} ${product.maker}`.toLowerCase().includes(query.toLowerCase())
     return matchesCategory && matchesQuery
-  }), [activeCategory, query])
+  }), [activeCategory, products, query])
 
   return (
     <div className="min-h-screen bg-[#f8f7f3] text-[#24251f]">
       <header className="border-b border-[#dfdfd6] bg-[#f8f7f3]/95 backdrop-blur-sm">
         <div className="mx-auto flex max-w-[1240px] items-center justify-between px-5 py-5 lg:px-8">
-          <a href="#top" className="flex items-center gap-3" aria-label="Sandoq home">
+          <a href="#top" className="flex items-center gap-3" aria-label="Jozzor Damietta Marketable plus home">
             <div className="flex size-10 items-center justify-center rounded-full bg-[#1f3b36] text-[#e8c98b]">
               <span className="font-serif text-xl font-semibold">S</span>
             </div>
             <div>
-              <p className="font-serif text-2xl leading-none tracking-tight">sandoq</p>
+              <p className="font-serif text-2xl leading-none tracking-tight">Jozzor Damietta Marketable plus</p>
               <p className="mt-1 text-[9px] font-semibold uppercase tracking-[0.22em] text-[#8a8b82]">made in damietta</p>
             </div>
           </a>
@@ -90,6 +179,10 @@ export default function Page() {
             <a href="#story" className="transition-colors hover:text-[#1f3b36]">Our story</a>
           </nav>
           <div className="flex items-center gap-3">
+            <div className="hidden rounded-full border border-[#dfdfd6] bg-white p-1 sm:flex" aria-label="Platform view">
+              <button onClick={() => setViewMode('customer')} className={`rounded-full px-3 py-1.5 text-xs font-semibold ${viewMode === 'customer' ? 'bg-[#1f3b36] text-white' : 'text-[#65675f]'}`}>Shop</button>
+              <button onClick={() => setViewMode('vendor')} className={`rounded-full px-3 py-1.5 text-xs font-semibold ${viewMode === 'vendor' ? 'bg-[#1f3b36] text-white' : 'text-[#65675f]'}`}>For makers</button>
+            </div>
             <button className="hidden items-center gap-2 rounded-full px-3 py-2 text-sm font-medium text-[#65675f] transition hover:bg-white sm:flex" aria-label="Choose language">
               <Globe2 data-icon="inline-start" /> EN <ChevronDown data-icon="inline-end" />
             </button>
@@ -103,6 +196,7 @@ export default function Page() {
       </header>
 
       <main id="top">
+        {viewMode === 'vendor' && <section className="border-b border-[#dfdfd6] bg-[#e8c98b]/30 py-8"><div className="mx-auto flex max-w-[1240px] flex-col gap-5 px-5 sm:flex-row sm:items-center sm:justify-between lg:px-8"><div><p className="text-xs font-bold uppercase tracking-[0.18em] text-[#8b682e]">Maker workspace</p><h2 className="mt-2 font-serif text-3xl text-[#1f3b36]">Bring your next piece to the world.</h2><p className="mt-1 text-sm text-[#686a61]">Send your workshop details and product catalogue for review.</p><p className="mt-2 text-xs text-[#686a61]">Your products stay private until they are approved.</p></div><a href="#sell" className="inline-flex items-center justify-center gap-2 self-start rounded-full bg-[#1f3b36] px-5 py-3 text-sm font-semibold text-white">Start a request <ArrowRight data-icon="inline-end" /></a></div></section>}
         <section className="mx-auto grid max-w-[1240px] items-center gap-12 px-5 pb-20 pt-16 lg:grid-cols-[0.94fr_1.06fr] lg:px-8 lg:pb-28 lg:pt-24">
           <div className="max-w-xl">
             <div className="mb-7 flex items-center gap-3 text-xs font-bold uppercase tracking-[0.18em] text-[#ba8c42]"><span className="h-px w-9 bg-[#ba8c42]" /> The heart of Egyptian furniture</div>
@@ -125,8 +219,8 @@ export default function Page() {
         <section id="discover" className="border-y border-[#dfdfd6] bg-[#f1f0ea] py-16 lg:py-20">
           <div className="mx-auto max-w-[1240px] px-5 lg:px-8">
             <div className="flex flex-col justify-between gap-7 md:flex-row md:items-end"><div><p className="text-xs font-bold uppercase tracking-[0.18em] text-[#ba8c42]">Curated for you</p><h2 className="mt-3 font-serif text-4xl tracking-tight text-[#1f3b36] md:text-5xl">Find your next <em className="font-normal text-[#b4823e]">heirloom.</em></h2></div><div className="relative w-full md:w-64"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[#8b8c83]" /><input value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Search furniture" placeholder="Search furniture..." suppressHydrationWarning className="w-full rounded-full border border-[#d8d8ce] bg-[#f8f7f3] py-3 pl-11 pr-4 text-sm outline-none transition focus:border-[#1f3b36]" /></div></div>
-            <div className="mt-9 flex gap-2 overflow-x-auto pb-2" role="tablist" aria-label="Furniture categories">{categories.map((category) => <button key={category} role="tab" aria-selected={activeCategory === category} onClick={() => setActiveCategory(category)} className={`whitespace-nowrap rounded-full px-5 py-2.5 text-sm font-medium transition ${activeCategory === category ? 'bg-[#1f3b36] text-white' : 'border border-[#d6d6cc] text-[#686a61] hover:bg-white'}`}>{category}</button>)}</div>
-            <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">{filteredProducts.map((product) => <article key={product.name} className="group"><div className={`relative aspect-[0.92] overflow-hidden rounded-2xl ${product.color}`}><img src={product.image} alt={product.name} className="size-full object-cover transition duration-500 group-hover:scale-105" /><button onClick={() => setFavorites((items) => items.includes(product.name) ? items.filter((item) => item !== product.name) : [...items, product.name])} className="absolute right-3 top-3 flex size-9 items-center justify-center rounded-full bg-white/85 text-[#1f3b36] backdrop-blur-sm" aria-label={`Save ${product.name}`}>{<Heart fill={favorites.includes(product.name) ? 'currentColor' : 'none'} className={favorites.includes(product.name) ? 'text-[#b4823e]' : ''} />}</button><span className="absolute bottom-3 left-3 rounded-full bg-white/90 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-[#1f3b36]">{product.category}</span></div><div className="mt-4 flex items-start justify-between gap-3"><div><h3 className="font-serif text-xl text-[#1f3b36]">{product.name}</h3><p className="mt-1 text-sm text-[#777970]">by {product.maker}</p></div><p className="whitespace-nowrap pt-1 text-sm font-semibold text-[#b4823e]">{product.price}</p></div></article>)}</div>
+            <div className="mt-9 flex gap-2 overflow-x-auto pb-2" role="tablist" aria-label="Furniture categories">{categories.map((category) => { const count = category === 'All furniture' ? products.length : products.filter((product) => product.category === category).length; return <button key={category} role="tab" aria-selected={activeCategory === category} onClick={() => setActiveCategory(category)} className={`inline-flex items-center gap-2 whitespace-nowrap rounded-full px-5 py-2.5 text-sm font-medium transition ${activeCategory === category ? 'bg-[#1f3b36] text-white' : 'border border-[#d6d6cc] text-[#686a61] hover:bg-white'}`}>{category}<span className={`rounded-full px-2 py-0.5 text-xs ${activeCategory === category ? 'bg-white/15 text-white' : 'bg-[#e9e8e1] text-[#686a61]'}`} aria-label={`${count} products`}>{count}</span></button> })}</div>
+            <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">{filteredProducts.map((product) => <article key={product.id ?? product.name} className="group"><div className={`relative aspect-[0.92] overflow-hidden rounded-2xl ${product.color}`}><img src={product.image} alt={product.name} className="size-full object-cover transition duration-500 group-hover:scale-105" />{product.imageIsFallback && <span className="absolute left-3 top-3 rounded-full bg-white/90 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-[#686a61]">Workshop photo pending</span>}<button onClick={() => setFavorites((items) => items.includes(product.name) ? items.filter((item) => item !== product.name) : [...items, product.name])} className="absolute right-3 top-3 flex size-9 items-center justify-center rounded-full bg-white/85 text-[#1f3b36] backdrop-blur-sm" aria-label={`Save ${product.name}`}>{<Heart fill={favorites.includes(product.name) ? 'currentColor' : 'none'} className={favorites.includes(product.name) ? 'text-[#b4823e]' : ''} />}</button><span className="absolute bottom-3 left-3 rounded-full bg-white/90 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-[#1f3b36]">{product.category}</span></div><div className="mt-4 flex items-start justify-between gap-3"><div><h3 className="font-serif text-xl text-[#1f3b36]">{product.name}</h3><p className="mt-1 text-sm text-[#777970]">by {product.maker}</p></div><p className="whitespace-nowrap pt-1 text-sm font-semibold text-[#b4823e]">{product.price ?? 'Contact for price'}</p></div><div className="mt-4 flex items-center justify-between gap-2"><span className={`inline-flex items-center gap-1.5 text-xs font-semibold ${product.quantity === 0 ? 'text-[#a34535]' : 'text-[#3b765d]'}`}><PackageCheck data-icon="inline-start" />{product.quantity === undefined ? product.availability ?? 'Made to order' : product.quantity > 0 ? `Available · ${product.quantity}` : 'Out of stock'}</span>{viewMode === 'customer' && <button disabled={product.quantity === 0} onClick={() => setCart((items) => items.includes(product.name) ? items : [...items, product.name])} className="inline-flex items-center gap-1.5 rounded-full bg-[#1f3b36] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#2d5049] disabled:cursor-not-allowed disabled:bg-[#85867d]"><ShoppingBag data-icon="inline-start" />{product.quantity === 0 ? 'Unavailable' : cart.includes(product.name) ? 'Added' : 'Add to cart'}</button>}</div></article>)}</div>
             {filteredProducts.length === 0 && <p className="py-14 text-center text-[#777970]">No pieces found. Try a different search.</p>}
             <div className="mt-12 text-center"><button className="inline-flex items-center gap-2 text-sm font-semibold text-[#1f3b36] underline decoration-[#d2ad6f] underline-offset-8">View all furniture <ArrowRight /></button></div>
           </div>
@@ -134,12 +228,35 @@ export default function Page() {
 
         <section id="makers" className="mx-auto grid max-w-[1240px] gap-12 px-5 py-20 lg:grid-cols-[0.8fr_1.2fr] lg:px-8 lg:py-28"><div><p className="text-xs font-bold uppercase tracking-[0.18em] text-[#ba8c42]">Meet the makers</p><h2 className="mt-3 max-w-sm font-serif text-4xl leading-tight tracking-tight text-[#1f3b36] md:text-5xl">The hands behind the <em className="font-normal text-[#b4823e]">craft.</em></h2><p className="mt-5 max-w-sm leading-7 text-[#777970]">Every piece has a person, a place, and a tradition behind it. Get to know the workshops keeping Damietta&apos;s craft alive.</p><a href="#sell" className="mt-7 inline-flex items-center gap-2 text-sm font-semibold text-[#1f3b36]">Meet all makers <ArrowRight /></a></div><div className="grid gap-4 sm:grid-cols-3">{makers.map((maker) => <div key={maker.name} className="rounded-2xl border border-[#dfdfd6] bg-[#f8f7f3] p-4 transition hover:-translate-y-1 hover:bg-white"><div className="aspect-square overflow-hidden rounded-xl bg-[#e9e7df]"><img src={maker.image} alt={`${maker.name} workshop`} className="size-full object-cover" /></div><h3 className="mt-4 font-serif text-lg text-[#1f3b36]">{maker.name}</h3><p className="mt-1 text-xs text-[#85867d]">{maker.location}</p><div className="mt-4 flex items-center gap-1 text-xs font-medium text-[#b4823e]"><Star fill="currentColor" /> 4.9</div></div>)}</div></section>
 
-        <section id="story" className="bg-[#1f3b36] text-white"><div className="mx-auto grid max-w-[1240px] items-center gap-12 px-5 py-20 lg:grid-cols-2 lg:px-8 lg:py-24"><div><p className="text-xs font-bold uppercase tracking-[0.18em] text-[#e8c98b]">More than furniture</p><h2 className="mt-4 max-w-lg font-serif text-4xl leading-tight tracking-tight md:text-5xl">A direct line from Damietta to your home.</h2><p className="mt-6 max-w-md leading-7 text-white/65">Sandoq makes it easier to buy directly from independent makers. Fair prices for workshops. One-of-a-kind pieces for you. Delivered anywhere.</p><div className="mt-9 grid max-w-md grid-cols-3 gap-4 border-t border-white/15 pt-6 text-sm text-white/65"><div><ShieldCheck className="mb-3 text-[#e8c98b]" /><span>Trusted makers</span></div><div><Truck className="mb-3 text-[#e8c98b]" /><span>Worldwide delivery</span></div><div><Sparkles className="mb-3 text-[#e8c98b]" /><span>Made to last</span></div></div></div><div className="relative overflow-hidden rounded-[2rem] bg-[#d3b986] p-8 sm:p-12"><div className="absolute -right-12 -top-12 size-48 rounded-full border border-[#1f3b36]/15" /><div className="absolute -right-4 -top-4 size-32 rounded-full border border-[#1f3b36]/15" /><p className="relative max-w-sm font-serif text-3xl leading-tight text-[#1f3b36]">“The best furniture is not just seen. It&apos;s felt.”</p><p className="relative mt-8 text-sm font-semibold text-[#1f3b36]/65">— An old Damietta saying</p></div></div></section>
+        <section id="story" className="bg-[#1f3b36] text-white"><div className="mx-auto grid max-w-[1240px] items-center gap-12 px-5 py-20 lg:grid-cols-2 lg:px-8 lg:py-24"><div><p className="text-xs font-bold uppercase tracking-[0.18em] text-[#e8c98b]">More than furniture</p><h2 className="mt-4 max-w-lg font-serif text-4xl leading-tight tracking-tight md:text-5xl">A direct line from Damietta to your home.</h2><p className="mt-6 max-w-md leading-7 text-white/65">Jozzor Damietta Marketable plus makes it easier to buy directly from independent makers. Fair prices for workshops. One-of-a-kind pieces for you. Delivered anywhere.</p><div className="mt-9 grid max-w-md grid-cols-3 gap-4 border-t border-white/15 pt-6 text-sm text-white/65"><div><ShieldCheck className="mb-3 text-[#e8c98b]" /><span>Trusted makers</span></div><div><Truck className="mb-3 text-[#e8c98b]" /><span>Worldwide delivery</span></div><div><Sparkles className="mb-3 text-[#e8c98b]" /><span>Made to last</span></div></div></div><div className="relative overflow-hidden rounded-[2rem] bg-[#d3b986] p-8 sm:p-12"><div className="absolute -right-12 -top-12 size-48 rounded-full border border-[#1f3b36]/15" /><div className="absolute -right-4 -top-4 size-32 rounded-full border border-[#1f3b36]/15" /><p className="relative max-w-sm font-serif text-3xl leading-tight text-[#1f3b36]">“The best furniture is not just seen. It&apos;s felt.”</p><p className="relative mt-8 text-sm font-semibold text-[#1f3b36]/65">— An old Damietta saying</p></div></div></section>
 
-        <section id="sell" className="mx-auto max-w-[1240px] px-5 py-20 text-center lg:px-8 lg:py-24"><Users className="mx-auto text-[#b4823e]" /><h2 className="mx-auto mt-4 max-w-2xl font-serif text-4xl tracking-tight text-[#1f3b36] md:text-5xl">Your workshop deserves to be <em className="font-normal text-[#b4823e]">seen.</em></h2><p className="mx-auto mt-5 max-w-lg leading-7 text-[#777970]">Join a growing community of Damietta&apos;s furniture makers and reach customers across Egypt and the world.</p><a href="mailto:hello@sandoq.co" className="mt-8 inline-flex items-center gap-3 rounded-full bg-[#e8c98b] px-7 py-3.5 text-sm font-semibold text-[#1f3b36] transition hover:bg-[#dfbc76]">List your workshop <ArrowRight /></a></section>
+        <section id="sell" className="bg-[#f1f0ea] px-5 py-20 lg:py-24">
+          <div className="mx-auto max-w-[960px]">
+            <div className="mx-auto max-w-2xl text-center">
+              <Users className="mx-auto text-[#b4823e]" />
+              <h2 className="mx-auto mt-4 font-serif text-4xl tracking-tight text-[#1f3b36] md:text-5xl">Your workshop deserves to be <em className="font-normal text-[#b4823e]">seen.</em></h2>
+              <p className="mx-auto mt-5 leading-7 text-[#777970]">Tell us about your workshop and attach a product catalogue or product images to get started.</p>
+            </div>
+            <form ref={formRef} onSubmit={handleWorkshopSubmit} className="mt-10 rounded-3xl border border-[#dfdfd6] bg-[#f8f7f3] p-6 sm:p-9">
+              <div className="grid gap-5 sm:grid-cols-2">
+                <label className="flex flex-col gap-2 text-sm font-semibold text-[#1f3b36]">Company / workshop name<input required name="companyName" autoComplete="organization" placeholder="e.g. El Nasr Furniture Workshop" className="rounded-xl border border-[#d8d8ce] bg-white px-4 py-3 font-normal outline-none focus:border-[#1f3b36]" /></label>
+                <label className="flex flex-col gap-2 text-sm font-semibold text-[#1f3b36]">Workshop size<select required name="workshopSize" defaultValue="" className="rounded-xl border border-[#d8d8ce] bg-white px-4 py-3 font-normal outline-none focus:border-[#1f3b36]"><option value="" disabled>Select workshop size</option><option>1–5 employees</option><option>6–20 employees</option><option>21–50 employees</option><option>More than 50 employees</option></select></label>
+                <label className="flex flex-col gap-2 text-sm font-semibold text-[#1f3b36]">Governorate<input required name="governorate" autoComplete="address-level1" placeholder="Damietta" className="rounded-xl border border-[#d8d8ce] bg-white px-4 py-3 font-normal outline-none focus:border-[#1f3b36]" /></label>
+                <label className="flex flex-col gap-2 text-sm font-semibold text-[#1f3b36]">City / area<input required name="city" autoComplete="address-level2" placeholder="Damietta, New Damietta, or nearby area" className="rounded-xl border border-[#d8d8ce] bg-white px-4 py-3 font-normal outline-none focus:border-[#1f3b36]" /></label>
+                <label className="flex flex-col gap-2 text-sm font-semibold text-[#1f3b36] sm:col-span-2">Detailed workshop address<textarea required name="address" autoComplete="street-address" rows={3} placeholder="Street, building, district, and a helpful landmark" className="resize-y rounded-xl border border-[#d8d8ce] bg-white px-4 py-3 font-normal outline-none focus:border-[#1f3b36]" /></label>
+                <label className="flex flex-col gap-2 text-sm font-semibold text-[#1f3b36] sm:col-span-2">Product catalogue <span className="font-normal text-[#777970]">Attach one CSV or Excel catalogue (required) and optional PDF or product images.</span><input required name="productFiles" type="file" multiple accept=".xlsx,.xls,.csv,.pdf,.jpg,.jpeg,.png,.webp" onChange={(event) => { setAttachmentNames(Array.from(event.target.files ?? []).map((file) => file.name)); setWorkshopMessage(''); setWorkshopError('') }} className="rounded-xl border border-dashed border-[#c8c8bd] bg-white px-4 py-4 text-sm file:mr-4 file:rounded-full file:border-0 file:bg-[#e8c98b] file:px-4 file:py-2 file:text-sm file:font-semibold file:text-[#1f3b36]" aria-describedby="product-files-help" /></label>
+              </div>
+              <p id="product-files-help" className="mt-3 text-xs leading-5 text-[#777970]">CSV and Excel files can contain up to 2,000 products. Use columns such as Name, Quantity or On Hand Quantity, Category, Sales Price, Vendor, Image URL, and Description. Each file is limited to 4 MB; total upload is limited to 4 MB.</p>
+              <p className="mt-2 break-words text-xs text-[#777970]">Selected files: {attachmentNames.length ? attachmentNames.join(', ') : 'none yet'}</p>
+              <button type="submit" disabled={isSubmitting} aria-busy={isSubmitting} className="mt-6 inline-flex items-center gap-2 rounded-full bg-[#1f3b36] px-6 py-3.5 text-sm font-semibold text-white transition hover:bg-[#2d5049] disabled:cursor-wait disabled:opacity-60">{isSubmitting ? 'Submitting request…' : 'Submit workshop request'} <ArrowRight data-icon="inline-end" /></button>
+              {workshopMessage && <p role="status" className="mt-4 text-sm font-medium text-[#1f3b36]">{workshopMessage}</p>}
+              {workshopError && <p role="alert" className="mt-4 text-sm font-medium text-red-800">{workshopError}</p>}
+            </form>
+          </div>
+        </section>
       </main>
 
-      <footer className="border-t border-[#dfdfd6]"><div className="mx-auto flex max-w-[1240px] flex-col gap-5 px-5 py-8 text-sm text-[#777970] sm:flex-row sm:items-center sm:justify-between lg:px-8"><div className="flex items-center gap-2 font-serif text-xl text-[#1f3b36]">sandoq <span className="font-sans text-xs text-[#999a91]">© 2026</span></div><div className="flex gap-6"><a href="#story" className="hover:text-[#1f3b36]">About</a><a href="mailto:hello@sandoq.co" className="hover:text-[#1f3b36]">Contact</a><a href="#" className="hover:text-[#1f3b36]">Instagram</a></div></div></footer>
+      <footer className="border-t border-[#dfdfd6]"><div className="mx-auto flex max-w-[1240px] flex-col gap-5 px-5 py-8 text-sm text-[#777970] sm:flex-row sm:items-center sm:justify-between lg:px-8"><div className="flex items-center gap-2 font-serif text-xl text-[#1f3b36]">Jozzor Damietta Marketable plus <span className="font-sans text-xs text-[#999a91]">© 2026</span></div><div className="flex gap-6"><a href="#story" className="hover:text-[#1f3b36]">About</a><a href="#sell" className="hover:text-[#1f3b36]">Contact</a><a href="/admin/sign-in" className="hover:text-[#1f3b36]">Workshop review</a><a href="#" className="hover:text-[#1f3b36]">Instagram</a></div></div></footer>
     </div>
   )
 }
