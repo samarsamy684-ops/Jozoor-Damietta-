@@ -1,6 +1,7 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
+import * as XLSX from 'xlsx'
 import {
   ArrowRight,
   ChevronDown,
@@ -21,7 +22,18 @@ import {
 
 const categories = ['All furniture', 'Living room', 'Dining', 'Bedroom', 'Office']
 
-const products = [
+type Product = {
+  name: string
+  maker: string
+  category: string
+  price?: string
+  image: string
+  color: string
+  quantity?: number
+  availability?: string
+}
+
+const initialProducts: Product[] = [
   {
     name: 'Marsa Lounge Chair',
     maker: 'El Nasr Workshop',
@@ -30,6 +42,7 @@ const products = [
     image: 'https://images.unsplash.com/photo-1567538096630-e0c55bd6374c?auto=format&fit=crop&w=900&q=85',
     color: 'bg-[#e8dfd3]',
     availability: 'In stock',
+    quantity: 5,
   },
   {
     name: 'Nile Oak Dining Set',
@@ -38,6 +51,8 @@ const products = [
     price: 'EGP 42,000',
     image: 'https://images.unsplash.com/photo-1618220179428-22790b461013?auto=format&fit=crop&w=900&q=85',
     color: 'bg-[#dce2dc]',
+    availability: 'In stock · 8',
+    quantity: 8,
   },
   {
     name: 'Sahara Side Table',
@@ -46,6 +61,8 @@ const products = [
     price: 'EGP 6,800',
     image: 'https://images.unsplash.com/photo-1532372320572-cda25653a26d?auto=format&fit=crop&w=900&q=85',
     color: 'bg-[#e7e0d6]',
+    availability: 'In stock · 12',
+    quantity: 12,
   },
   {
     name: 'Cairo Cane Bed',
@@ -54,6 +71,18 @@ const products = [
     price: 'EGP 31,500',
     image: 'https://images.unsplash.com/photo-1505693416388-ac5ce068fe85?auto=format&fit=crop&w=900&q=85',
     color: 'bg-[#e2ded7]',
+    availability: 'In stock · 3',
+    quantity: 3,
+  },
+  {
+    name: 'Workshop Writing Desk',
+    maker: 'Said El Sherbiny',
+    category: 'Office',
+    price: 'EGP 22,000',
+    image: 'https://images.unsplash.com/photo-1518455027359-f3f8164ba6bd?auto=format&fit=crop&w=900&q=85',
+    color: 'bg-[#e2ded7]',
+    availability: 'In stock · 4',
+    quantity: 4,
   },
 ]
 
@@ -70,12 +99,60 @@ export default function Page() {
   const [favorites, setFavorites] = useState<string[]>([])
   const [viewMode, setViewMode] = useState<'customer' | 'vendor'>('customer')
   const [cart, setCart] = useState<string[]>([])
+  const [products, setProducts] = useState<Product[]>(initialProducts)
+  const [importMessage, setImportMessage] = useState('')
+  const [importError, setImportError] = useState('')
+  const spreadsheetInput = useRef<HTMLInputElement>(null)
+
+  const handleSpreadsheetUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+    setImportError('')
+    setImportMessage('')
+
+    try {
+      const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' })
+      const firstSheet = workbook.Sheets[workbook.SheetNames[0]]
+      if (!firstSheet) throw new Error('The spreadsheet does not contain a worksheet.')
+      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(firstSheet, { defval: '' })
+      const imported: Product[] = []
+
+      for (const [index, row] of rows.entries()) {
+        const values = Object.fromEntries(Object.entries(row).map(([key, value]) => [key.trim().toLowerCase(), value]))
+        const name = String(values.name ?? values['product name'] ?? '').trim()
+        const maker = String(values.manufacturer ?? values.maker ?? '').trim()
+        const image = String(values.image ?? values['image url'] ?? '').trim()
+        const categoryValue = String(values.category ?? '').trim()
+        const category = categories.slice(1).find((item) => item.toLowerCase() === categoryValue.toLowerCase()) ?? 'Living room'
+        const quantityValue = Number(values.quantity)
+        let safeImage = ''
+        try {
+          const imageUrl = new URL(image)
+          if (imageUrl.protocol === 'https:' || imageUrl.protocol === 'http:') safeImage = imageUrl.href
+        } catch {}
+
+        if (!name && !maker && !image && !String(values.quantity).trim()) continue
+        if (!name || !maker || !Number.isInteger(quantityValue) || quantityValue < 0 || !safeImage) {
+          throw new Error(`Row ${index + 2} needs a product name, non-negative whole-number quantity, manufacturer, and valid image URL.`)
+        }
+        imported.push({ name, maker, quantity: quantityValue, image: safeImage, category, color: 'bg-[#e8dfd3]', availability: quantityValue > 0 ? `In stock · ${quantityValue}` : 'Out of stock' })
+      }
+
+      if (!imported.length) throw new Error('No valid product rows were found in the first worksheet.')
+      setProducts((current) => [...imported, ...current])
+      setImportMessage(`${imported.length} product${imported.length === 1 ? '' : 's'} imported successfully.`)
+    } catch (error) {
+      setImportError(error instanceof Error ? error.message : 'Could not read this spreadsheet. Please check the file and try again.')
+    } finally {
+      event.target.value = ''
+    }
+  }
 
   const filteredProducts = useMemo(() => products.filter((product) => {
     const matchesCategory = activeCategory === 'All furniture' || product.category === activeCategory
     const matchesQuery = `${product.name} ${product.maker}`.toLowerCase().includes(query.toLowerCase())
     return matchesCategory && matchesQuery
-  }), [activeCategory, query])
+  }), [activeCategory, products, query])
 
   return (
     <div className="min-h-screen bg-[#f8f7f3] text-[#24251f]">
@@ -113,7 +190,7 @@ export default function Page() {
       </header>
 
       <main id="top">
-        {viewMode === 'vendor' && <section className="border-b border-[#dfdfd6] bg-[#e8c98b]/30 py-8"><div className="mx-auto flex max-w-[1240px] flex-col gap-5 px-5 sm:flex-row sm:items-center sm:justify-between lg:px-8"><div><p className="text-xs font-bold uppercase tracking-[0.18em] text-[#8b682e]">Maker workspace</p><h2 className="mt-2 font-serif text-3xl text-[#1f3b36]">Bring your next piece to the world.</h2><p className="mt-1 text-sm text-[#686a61]">Create a workshop profile and list products for customers across Egypt.</p></div><button className="inline-flex items-center justify-center gap-2 rounded-full bg-[#1f3b36] px-5 py-3 text-sm font-semibold text-white"><Plus data-icon="inline-start" /> Add a product</button></div></section>}
+        {viewMode === 'vendor' && <section className="border-b border-[#dfdfd6] bg-[#e8c98b]/30 py-8"><div className="mx-auto flex max-w-[1240px] flex-col gap-5 px-5 sm:flex-row sm:items-center sm:justify-between lg:px-8"><div><p className="text-xs font-bold uppercase tracking-[0.18em] text-[#8b682e]">Maker workspace</p><h2 className="mt-2 font-serif text-3xl text-[#1f3b36]">Bring your next piece to the world.</h2><p className="mt-1 text-sm text-[#686a61]">Upload your product spreadsheet to add items to the marketplace.</p><p className="mt-2 text-xs text-[#686a61]">Required columns: name, quantity, manufacturer, image (image URL)</p></div><div className="flex flex-col items-start gap-2"><input ref={spreadsheetInput} type="file" accept=".xlsx,.xls,.csv" onChange={handleSpreadsheetUpload} className="sr-only" aria-label="Choose Excel or CSV product file" /><button onClick={() => spreadsheetInput.current?.click()} className="inline-flex items-center justify-center gap-2 rounded-full bg-[#1f3b36] px-5 py-3 text-sm font-semibold text-white"><Plus data-icon="inline-start" /> Upload Excel file</button>{importMessage && <p role="status" className="text-sm font-medium text-[#1f3b36]">{importMessage}</p>}{importError && <p role="alert" className="max-w-sm text-sm font-medium text-red-800">{importError}</p>}</div></div></section>}
         <section className="mx-auto grid max-w-[1240px] items-center gap-12 px-5 pb-20 pt-16 lg:grid-cols-[0.94fr_1.06fr] lg:px-8 lg:pb-28 lg:pt-24">
           <div className="max-w-xl">
             <div className="mb-7 flex items-center gap-3 text-xs font-bold uppercase tracking-[0.18em] text-[#ba8c42]"><span className="h-px w-9 bg-[#ba8c42]" /> The heart of Egyptian furniture</div>
@@ -136,8 +213,8 @@ export default function Page() {
         <section id="discover" className="border-y border-[#dfdfd6] bg-[#f1f0ea] py-16 lg:py-20">
           <div className="mx-auto max-w-[1240px] px-5 lg:px-8">
             <div className="flex flex-col justify-between gap-7 md:flex-row md:items-end"><div><p className="text-xs font-bold uppercase tracking-[0.18em] text-[#ba8c42]">Curated for you</p><h2 className="mt-3 font-serif text-4xl tracking-tight text-[#1f3b36] md:text-5xl">Find your next <em className="font-normal text-[#b4823e]">heirloom.</em></h2></div><div className="relative w-full md:w-64"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[#8b8c83]" /><input value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Search furniture" placeholder="Search furniture..." suppressHydrationWarning className="w-full rounded-full border border-[#d8d8ce] bg-[#f8f7f3] py-3 pl-11 pr-4 text-sm outline-none transition focus:border-[#1f3b36]" /></div></div>
-            <div className="mt-9 flex gap-2 overflow-x-auto pb-2" role="tablist" aria-label="Furniture categories">{categories.map((category) => <button key={category} role="tab" aria-selected={activeCategory === category} onClick={() => setActiveCategory(category)} className={`whitespace-nowrap rounded-full px-5 py-2.5 text-sm font-medium transition ${activeCategory === category ? 'bg-[#1f3b36] text-white' : 'border border-[#d6d6cc] text-[#686a61] hover:bg-white'}`}>{category}</button>)}</div>
-            <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">{filteredProducts.map((product) => <article key={product.name} className="group"><div className={`relative aspect-[0.92] overflow-hidden rounded-2xl ${product.color}`}><img src={product.image} alt={product.name} className="size-full object-cover transition duration-500 group-hover:scale-105" /><button onClick={() => setFavorites((items) => items.includes(product.name) ? items.filter((item) => item !== product.name) : [...items, product.name])} className="absolute right-3 top-3 flex size-9 items-center justify-center rounded-full bg-white/85 text-[#1f3b36] backdrop-blur-sm" aria-label={`Save ${product.name}`}>{<Heart fill={favorites.includes(product.name) ? 'currentColor' : 'none'} className={favorites.includes(product.name) ? 'text-[#b4823e]' : ''} />}</button><span className="absolute bottom-3 left-3 rounded-full bg-white/90 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-[#1f3b36]">{product.category}</span></div><div className="mt-4 flex items-start justify-between gap-3"><div><h3 className="font-serif text-xl text-[#1f3b36]">{product.name}</h3><p className="mt-1 text-sm text-[#777970]">by {product.maker}</p></div><p className="whitespace-nowrap pt-1 text-sm font-semibold text-[#b4823e]">{product.price}</p></div><div className="mt-4 flex items-center justify-between gap-2"><span className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#3b765d]"><PackageCheck data-icon="inline-start" />{product.availability ?? 'Made to order'}</span>{viewMode === 'customer' && <button onClick={() => setCart((items) => items.includes(product.name) ? items : [...items, product.name])} className="inline-flex items-center gap-1.5 rounded-full bg-[#1f3b36] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#2d5049]"><ShoppingBag data-icon="inline-start" />{cart.includes(product.name) ? 'Added' : 'Add to cart'}</button>}</div></article>)}</div>
+            <div className="mt-9 flex gap-2 overflow-x-auto pb-2" role="tablist" aria-label="Furniture categories">{categories.map((category) => { const count = category === 'All furniture' ? products.length : products.filter((product) => product.category === category).length; return <button key={category} role="tab" aria-selected={activeCategory === category} onClick={() => setActiveCategory(category)} className={`inline-flex items-center gap-2 whitespace-nowrap rounded-full px-5 py-2.5 text-sm font-medium transition ${activeCategory === category ? 'bg-[#1f3b36] text-white' : 'border border-[#d6d6cc] text-[#686a61] hover:bg-white'}`}>{category}<span className={`rounded-full px-2 py-0.5 text-xs ${activeCategory === category ? 'bg-white/15 text-white' : 'bg-[#e9e8e1] text-[#686a61]'}`} aria-label={`${count} products`}>{count}</span></button> })}</div>
+            <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">{filteredProducts.map((product) => <article key={product.name} className="group"><div className={`relative aspect-[0.92] overflow-hidden rounded-2xl ${product.color}`}><img src={product.image} alt={product.name} className="size-full object-cover transition duration-500 group-hover:scale-105" /><button onClick={() => setFavorites((items) => items.includes(product.name) ? items.filter((item) => item !== product.name) : [...items, product.name])} className="absolute right-3 top-3 flex size-9 items-center justify-center rounded-full bg-white/85 text-[#1f3b36] backdrop-blur-sm" aria-label={`Save ${product.name}`}>{<Heart fill={favorites.includes(product.name) ? 'currentColor' : 'none'} className={favorites.includes(product.name) ? 'text-[#b4823e]' : ''} />}</button><span className="absolute bottom-3 left-3 rounded-full bg-white/90 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-[#1f3b36]">{product.category}</span></div><div className="mt-4 flex items-start justify-between gap-3"><div><h3 className="font-serif text-xl text-[#1f3b36]">{product.name}</h3><p className="mt-1 text-sm text-[#777970]">by {product.maker}</p></div><p className="whitespace-nowrap pt-1 text-sm font-semibold text-[#b4823e]">{product.price ?? 'Contact for price'}</p></div><div className="mt-4 flex items-center justify-between gap-2"><span className={`inline-flex items-center gap-1.5 text-xs font-semibold ${product.quantity === 0 ? 'text-[#a34535]' : 'text-[#3b765d]'}`}><PackageCheck data-icon="inline-start" />{product.quantity === undefined ? product.availability ?? 'Made to order' : product.quantity > 0 ? `Available · ${product.quantity}` : 'Out of stock'}</span>{viewMode === 'customer' && <button disabled={product.quantity === 0} onClick={() => setCart((items) => items.includes(product.name) ? items : [...items, product.name])} className="inline-flex items-center gap-1.5 rounded-full bg-[#1f3b36] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#2d5049] disabled:cursor-not-allowed disabled:bg-[#85867d]"><ShoppingBag data-icon="inline-start" />{product.quantity === 0 ? 'Unavailable' : cart.includes(product.name) ? 'Added' : 'Add to cart'}</button>}</div></article>)}</div>
             {filteredProducts.length === 0 && <p className="py-14 text-center text-[#777970]">No pieces found. Try a different search.</p>}
             <div className="mt-12 text-center"><button className="inline-flex items-center gap-2 text-sm font-semibold text-[#1f3b36] underline decoration-[#d2ad6f] underline-offset-8">View all furniture <ArrowRight /></button></div>
           </div>
