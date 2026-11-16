@@ -102,7 +102,14 @@ export default function Page() {
   const [products, setProducts] = useState<Product[]>(initialProducts)
   const [importMessage, setImportMessage] = useState('')
   const [importError, setImportError] = useState('')
+  const [workshopMessage, setWorkshopMessage] = useState('')
+  const [attachmentNames, setAttachmentNames] = useState<string[]>([])
   const spreadsheetInput = useRef<HTMLInputElement>(null)
+
+  const handleWorkshopSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setWorkshopMessage('Your workshop details are ready. Connect a secure storage and review workflow to publish this profile and its product files.')
+  }
 
   const handleSpreadsheetUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -224,7 +231,28 @@ export default function Page() {
 
         <section id="story" className="bg-[#1f3b36] text-white"><div className="mx-auto grid max-w-[1240px] items-center gap-12 px-5 py-20 lg:grid-cols-2 lg:px-8 lg:py-24"><div><p className="text-xs font-bold uppercase tracking-[0.18em] text-[#e8c98b]">More than furniture</p><h2 className="mt-4 max-w-lg font-serif text-4xl leading-tight tracking-tight md:text-5xl">A direct line from Damietta to your home.</h2><p className="mt-6 max-w-md leading-7 text-white/65">Jozoor Damietta makes it easier to buy directly from independent makers. Fair prices for workshops. One-of-a-kind pieces for you. Delivered anywhere.</p><div className="mt-9 grid max-w-md grid-cols-3 gap-4 border-t border-white/15 pt-6 text-sm text-white/65"><div><ShieldCheck className="mb-3 text-[#e8c98b]" /><span>Trusted makers</span></div><div><Truck className="mb-3 text-[#e8c98b]" /><span>Worldwide delivery</span></div><div><Sparkles className="mb-3 text-[#e8c98b]" /><span>Made to last</span></div></div></div><div className="relative overflow-hidden rounded-[2rem] bg-[#d3b986] p-8 sm:p-12"><div className="absolute -right-12 -top-12 size-48 rounded-full border border-[#1f3b36]/15" /><div className="absolute -right-4 -top-4 size-32 rounded-full border border-[#1f3b36]/15" /><p className="relative max-w-sm font-serif text-3xl leading-tight text-[#1f3b36]">“The best furniture is not just seen. It&apos;s felt.”</p><p className="relative mt-8 text-sm font-semibold text-[#1f3b36]/65">— An old Damietta saying</p></div></div></section>
 
-        <section id="sell" className="mx-auto max-w-[1240px] px-5 py-20 text-center lg:px-8 lg:py-24"><Users className="mx-auto text-[#b4823e]" /><h2 className="mx-auto mt-4 max-w-2xl font-serif text-4xl tracking-tight text-[#1f3b36] md:text-5xl">Your workshop deserves to be <em className="font-normal text-[#b4823e]">seen.</em></h2><p className="mx-auto mt-5 max-w-lg leading-7 text-[#777970]">Join a growing community of Damietta&apos;s furniture makers and reach customers across Egypt and the world.</p><a href="mailto:hello@Jozoor Damietta.co" className="mt-8 inline-flex items-center gap-3 rounded-full bg-[#e8c98b] px-7 py-3.5 text-sm font-semibold text-[#1f3b36] transition hover:bg-[#dfbc76]">List your workshop <ArrowRight /></a></section>
+        <section id="sell" className="bg-[#f1f0ea] px-5 py-20 lg:py-24">
+          <div className="mx-auto max-w-[960px]">
+            <div className="mx-auto max-w-2xl text-center">
+              <Users className="mx-auto text-[#b4823e]" />
+              <h2 className="mx-auto mt-4 font-serif text-4xl tracking-tight text-[#1f3b36] md:text-5xl">Your workshop deserves to be <em className="font-normal text-[#b4823e]">seen.</em></h2>
+              <p className="mx-auto mt-5 leading-7 text-[#777970]">Tell us about your workshop and attach a product catalogue or product images to get started.</p>
+            </div>
+            <form onSubmit={handleWorkshopSubmit} className="mt-10 rounded-3xl border border-[#dfdfd6] bg-[#f8f7f3] p-6 sm:p-9">
+              <div className="grid gap-5 sm:grid-cols-2">
+                <label className="flex flex-col gap-2 text-sm font-semibold text-[#1f3b36]">Company / workshop name<input required name="companyName" autoComplete="organization" placeholder="e.g. El Nasr Furniture Workshop" className="rounded-xl border border-[#d8d8ce] bg-white px-4 py-3 font-normal outline-none focus:border-[#1f3b36]" /></label>
+                <label className="flex flex-col gap-2 text-sm font-semibold text-[#1f3b36]">Workshop size<select required name="workshopSize" defaultValue="" className="rounded-xl border border-[#d8d8ce] bg-white px-4 py-3 font-normal outline-none focus:border-[#1f3b36]"><option value="" disabled>Select workshop size</option><option>1–5 employees</option><option>6–20 employees</option><option>21–50 employees</option><option>More than 50 employees</option></select></label>
+                <label className="flex flex-col gap-2 text-sm font-semibold text-[#1f3b36]">Governorate<input required name="governorate" autoComplete="address-level1" placeholder="Damietta" className="rounded-xl border border-[#d8d8ce] bg-white px-4 py-3 font-normal outline-none focus:border-[#1f3b36]" /></label>
+                <label className="flex flex-col gap-2 text-sm font-semibold text-[#1f3b36]">City / area<input required name="city" autoComplete="address-level2" placeholder="Damietta, New Damietta, or nearby area" className="rounded-xl border border-[#d8d8ce] bg-white px-4 py-3 font-normal outline-none focus:border-[#1f3b36]" /></label>
+                <label className="flex flex-col gap-2 text-sm font-semibold text-[#1f3b36] sm:col-span-2">Detailed workshop address<textarea required name="address" autoComplete="street-address" rows={3} placeholder="Street, building, district, and a helpful landmark" className="resize-y rounded-xl border border-[#d8d8ce] bg-white px-4 py-3 font-normal outline-none focus:border-[#1f3b36]" /></label>
+                <label className="flex flex-col gap-2 text-sm font-semibold text-[#1f3b36] sm:col-span-2">Attach product catalogue or images <span className="font-normal text-[#777970]">Excel, CSV, PDF, or product images; you can select multiple files.</span><input name="productFiles" type="file" multiple accept=".xlsx,.xls,.csv,.pdf,image/*" onChange={(event) => { setAttachmentNames(Array.from(event.target.files ?? []).map((file) => file.name)); setWorkshopMessage('') }} className="rounded-xl border border-dashed border-[#c8c8bd] bg-white px-4 py-4 text-sm file:mr-4 file:rounded-full file:border-0 file:bg-[#e8c98b] file:px-4 file:py-2 file:text-sm file:font-semibold file:text-[#1f3b36]" aria-describedby="product-files-help" /></label>
+              </div>
+              <p id="product-files-help" className="mt-3 text-xs leading-5 text-[#777970]">Selected files: {attachmentNames.length ? attachmentNames.join(', ') : 'none yet'}. Files and form details are not uploaded or saved in this preview.</p>
+              <button type="submit" className="mt-6 inline-flex items-center gap-2 rounded-full bg-[#1f3b36] px-6 py-3.5 text-sm font-semibold text-white transition hover:bg-[#2d5049]">Preview workshop profile <ArrowRight data-icon="inline-end" /></button>
+              {workshopMessage && <p role="status" className="mt-4 text-sm font-medium text-[#1f3b36]">{workshopMessage}</p>}
+            </form>
+          </div>
+        </section>
       </main>
 
       <footer className="border-t border-[#dfdfd6]"><div className="mx-auto flex max-w-[1240px] flex-col gap-5 px-5 py-8 text-sm text-[#777970] sm:flex-row sm:items-center sm:justify-between lg:px-8"><div className="flex items-center gap-2 font-serif text-xl text-[#1f3b36]">Jozoor Damietta <span className="font-sans text-xs text-[#999a91]">© 2026</span></div><div className="flex gap-6"><a href="#story" className="hover:text-[#1f3b36]">About</a><a href="mailto:hello@Jozoor Damietta.co" className="hover:text-[#1f3b36]">Contact</a><a href="#" className="hover:text-[#1f3b36]">Instagram</a></div></div></footer>
