@@ -1,3 +1,4 @@
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@400;500;600;700&display=swap');
 @import 'tailwindcss';
 @import 'tw-animate-css';
 @import 'shadcn/tailwind.css';
@@ -165,4 +166,12 @@
 
 .font-serif {
   font-family: Georgia, 'Times New Roman', serif;
+}
+
+:lang(ar) {
+  font-family: 'Noto Sans Arabic', Arial, Helvetica, sans-serif;
+}
+
+:lang(ar) .font-serif {
+  font-family: 'Noto Sans Arabic', Georgia, serif;
 }

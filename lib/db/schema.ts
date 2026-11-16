@@ -2,6 +2,7 @@ import {
   boolean,
   index,
   integer,
+  jsonb,
   pgTable,
   text,
   timestamp,
@@ -41,6 +42,25 @@ export const workshopRequestAttachments = pgTable(
     uniqueIndex('workshop_request_attachments_pathname_key').on(table.pathname),
     index('workshop_request_attachments_request_idx').on(table.requestId),
   ],
+)
+
+export const marketplaceOrders = pgTable(
+  'marketplace_orders',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    customerName: text('customer_name').notNull(),
+    customerEmail: text('customer_email').notNull(),
+    customerPhone: text('customer_phone').notNull(),
+    shippingAddress: text('shipping_address').notNull(),
+    paymentMethod: text('payment_method').notNull(),
+    status: text('status').notNull().default('pending'),
+    currency: text('currency').notNull().default('egp'),
+    subtotalMinor: integer('subtotal_minor').notNull(),
+    items: jsonb('items').notNull(),
+    stripeSessionId: text('stripe_session_id'),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex('marketplace_orders_stripe_session_key').on(table.stripeSessionId)],
 )
 
 export const marketplaceProducts = pgTable(

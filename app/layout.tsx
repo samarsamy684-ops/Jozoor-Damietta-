@@ -3,8 +3,8 @@ import type { Metadata, Viewport } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'Jozzor Damietta Marketable plus — Made in Damietta',
-  description: 'Discover handcrafted furniture from Damietta workshops, or submit a product catalogue for review on Jozzor Damietta Marketable plus.',
+  title: 'Jozzor Damietta — Handcrafted Furniture from Egypt',
+  description: 'Shop handcrafted furniture made by independent Damietta workshops. تسوّق أثاثًا مصنوعًا يدويًا من ورش دمياط المستقلة.',
   generator: 'v0.app',
   icons: {
     icon: [
