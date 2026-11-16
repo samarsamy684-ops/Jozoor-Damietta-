@@ -21,6 +21,7 @@ export async function GET() {
         category: product.category,
         price: product.price ?? undefined,
         image: product.imageUrl ?? '',
+        imageIsFallback: !product.imageUrl,
         color: 'bg-[#e8dfd3]',
         quantity: product.quantity,
         description: product.description ?? undefined,

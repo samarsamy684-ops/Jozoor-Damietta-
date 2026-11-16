@@ -1,7 +1,7 @@
 'use client'
 
-import { useMemo, useRef, useState } from 'react'
-import * as XLSX from 'xlsx'
+import { useMemo, useRef, useState, type FormEvent } from 'react'
+import useSWR from 'swr'
 import {
   ArrowRight,
   ChevronDown,
@@ -9,7 +9,6 @@ import {
   Heart,
   Menu,
   PackageCheck,
-  Plus,
   Search,
   ShieldCheck,
   ShoppingBag,
@@ -23,6 +22,7 @@ import {
 const categories = ['All furniture', 'Living room', 'Dining', 'Bedroom', 'Office']
 
 type Product = {
+  id?: string
   name: string
   maker: string
   category: string
@@ -31,6 +31,21 @@ type Product = {
   color: string
   quantity?: number
   availability?: string
+  description?: string
+  imageIsFallback?: boolean
+}
+
+const fetcher = async (url: string): Promise<Product[]> => {
+  const response = await fetch(url)
+  if (!response.ok) throw new Error('Could not load published products.')
+  return response.json()
+}
+
+const fallbackImages: Record<string, string> = {
+  'Living room': 'https://images.unsplash.com/photo-1567538096630-e0c55bd6374c?auto=format&fit=crop&w=900&q=85',
+  Dining: 'https://images.unsplash.com/photo-1618220179428-22790b461013?auto=format&fit=crop&w=900&q=85',
+  Bedroom: 'https://images.unsplash.com/photo-1505693416388-ac5ce068fe85?auto=format&fit=crop&w=900&q=85',
+  Office: 'https://images.unsplash.com/photo-1518455027359-f3f8164ba6bd?auto=format&fit=crop&w=900&q=85',
 }
 
 const initialProducts: Product[] = [
@@ -99,59 +114,43 @@ export default function Page() {
   const [favorites, setFavorites] = useState<string[]>([])
   const [viewMode, setViewMode] = useState<'customer' | 'vendor'>('customer')
   const [cart, setCart] = useState<string[]>([])
-  const [products, setProducts] = useState<Product[]>(initialProducts)
-  const [importMessage, setImportMessage] = useState('')
-  const [importError, setImportError] = useState('')
   const [workshopMessage, setWorkshopMessage] = useState('')
+  const [workshopError, setWorkshopError] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const [attachmentNames, setAttachmentNames] = useState<string[]>([])
-  const spreadsheetInput = useRef<HTMLInputElement>(null)
+  const formRef = useRef<HTMLFormElement>(null)
+  const { data: approvedProducts = [] } = useSWR<Product[]>('/api/products', fetcher, { fallbackData: [] })
 
-  const handleWorkshopSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+  const products = useMemo(() => [
+    ...initialProducts,
+    ...approvedProducts.map((product) => ({
+      ...product,
+      image: product.image || fallbackImages[product.category] || fallbackImages['Living room'],
+      imageIsFallback: product.imageIsFallback,
+      color: product.color || 'bg-[#e8dfd3]',
+      availability: product.quantity === undefined ? 'Available' : product.quantity > 0 ? `In stock · ${product.quantity}` : 'Out of stock',
+    })),
+  ], [approvedProducts])
+
+  const handleWorkshopSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    setWorkshopMessage('Your workshop details are ready. Connect a secure storage and review workflow to publish this profile and its product files.')
-  }
-
-  const handleSpreadsheetUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    if (!file) return
-    setImportError('')
-    setImportMessage('')
+    const form = event.currentTarget
+    setWorkshopMessage('')
+    setWorkshopError('')
+    setIsSubmitting(true)
 
     try {
-      const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' })
-      const firstSheet = workbook.Sheets[workbook.SheetNames[0]]
-      if (!firstSheet) throw new Error('The spreadsheet does not contain a worksheet.')
-      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(firstSheet, { defval: '' })
-      const imported: Product[] = []
+      const response = await fetch('/api/workshops', { method: 'POST', body: new FormData(form) })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error || 'We could not submit your request.')
 
-      for (const [index, row] of rows.entries()) {
-        const values = Object.fromEntries(Object.entries(row).map(([key, value]) => [key.trim().toLowerCase(), value]))
-        const name = String(values.name ?? values['product name'] ?? '').trim()
-        const maker = String(values.manufacturer ?? values.maker ?? '').trim()
-        const image = String(values.image ?? values['image url'] ?? '').trim()
-        const categoryValue = String(values.category ?? '').trim()
-        const category = categories.slice(1).find((item) => item.toLowerCase() === categoryValue.toLowerCase()) ?? 'Living room'
-        const quantityValue = Number(values.quantity)
-        let safeImage = ''
-        try {
-          const imageUrl = new URL(image)
-          if (imageUrl.protocol === 'https:' || imageUrl.protocol === 'http:') safeImage = imageUrl.href
-        } catch {}
-
-        if (!name && !maker && !image && !String(values.quantity).trim()) continue
-        if (!name || !maker || !Number.isInteger(quantityValue) || quantityValue < 0 || !safeImage) {
-          throw new Error(`Row ${index + 2} needs a product name, non-negative whole-number quantity, manufacturer, and valid image URL.`)
-        }
-        imported.push({ name, maker, quantity: quantityValue, image: safeImage, category, color: 'bg-[#e8dfd3]', availability: quantityValue > 0 ? `In stock · ${quantityValue}` : 'Out of stock' })
-      }
-
-      if (!imported.length) throw new Error('No valid product rows were found in the first worksheet.')
-      setProducts((current) => [...imported, ...current])
-      setImportMessage(`${imported.length} product${imported.length === 1 ? '' : 's'} imported successfully.`)
+      setWorkshopMessage(`Request received: ${result.productCount} product${result.productCount === 1 ? '' : 's'} are saved privately and will appear after admin approval.`)
+      form.reset()
+      setAttachmentNames([])
     } catch (error) {
-      setImportError(error instanceof Error ? error.message : 'Could not read this spreadsheet. Please check the file and try again.')
+      setWorkshopError(error instanceof Error ? error.message : 'We could not submit your request. Please try again.')
     } finally {
-      event.target.value = ''
+      setIsSubmitting(false)
     }
   }
 
@@ -197,7 +196,7 @@ export default function Page() {
       </header>
 
       <main id="top">
-        {viewMode === 'vendor' && <section className="border-b border-[#dfdfd6] bg-[#e8c98b]/30 py-8"><div className="mx-auto flex max-w-[1240px] flex-col gap-5 px-5 sm:flex-row sm:items-center sm:justify-between lg:px-8"><div><p className="text-xs font-bold uppercase tracking-[0.18em] text-[#8b682e]">Maker workspace</p><h2 className="mt-2 font-serif text-3xl text-[#1f3b36]">Bring your next piece to the world.</h2><p className="mt-1 text-sm text-[#686a61]">Upload your product spreadsheet to add items to the marketplace.</p><p className="mt-2 text-xs text-[#686a61]">Required columns: name, quantity, manufacturer, image (image URL)</p></div><div className="flex flex-col items-start gap-2"><input ref={spreadsheetInput} type="file" accept=".xlsx,.xls,.csv" onChange={handleSpreadsheetUpload} className="sr-only" aria-label="Choose Excel or CSV product file" /><button onClick={() => spreadsheetInput.current?.click()} className="inline-flex items-center justify-center gap-2 rounded-full bg-[#1f3b36] px-5 py-3 text-sm font-semibold text-white"><Plus data-icon="inline-start" /> Upload Excel file</button>{importMessage && <p role="status" className="text-sm font-medium text-[#1f3b36]">{importMessage}</p>}{importError && <p role="alert" className="max-w-sm text-sm font-medium text-red-800">{importError}</p>}</div></div></section>}
+        {viewMode === 'vendor' && <section className="border-b border-[#dfdfd6] bg-[#e8c98b]/30 py-8"><div className="mx-auto flex max-w-[1240px] flex-col gap-5 px-5 sm:flex-row sm:items-center sm:justify-between lg:px-8"><div><p className="text-xs font-bold uppercase tracking-[0.18em] text-[#8b682e]">Maker workspace</p><h2 className="mt-2 font-serif text-3xl text-[#1f3b36]">Bring your next piece to the world.</h2><p className="mt-1 text-sm text-[#686a61]">Send your workshop details and product catalogue for review.</p><p className="mt-2 text-xs text-[#686a61]">Your products stay private until they are approved.</p></div><a href="#sell" className="inline-flex items-center justify-center gap-2 self-start rounded-full bg-[#1f3b36] px-5 py-3 text-sm font-semibold text-white">Start a request <ArrowRight data-icon="inline-end" /></a></div></section>}
         <section className="mx-auto grid max-w-[1240px] items-center gap-12 px-5 pb-20 pt-16 lg:grid-cols-[0.94fr_1.06fr] lg:px-8 lg:pb-28 lg:pt-24">
           <div className="max-w-xl">
             <div className="mb-7 flex items-center gap-3 text-xs font-bold uppercase tracking-[0.18em] text-[#ba8c42]"><span className="h-px w-9 bg-[#ba8c42]" /> The heart of Egyptian furniture</div>
@@ -221,7 +220,7 @@ export default function Page() {
           <div className="mx-auto max-w-[1240px] px-5 lg:px-8">
             <div className="flex flex-col justify-between gap-7 md:flex-row md:items-end"><div><p className="text-xs font-bold uppercase tracking-[0.18em] text-[#ba8c42]">Curated for you</p><h2 className="mt-3 font-serif text-4xl tracking-tight text-[#1f3b36] md:text-5xl">Find your next <em className="font-normal text-[#b4823e]">heirloom.</em></h2></div><div className="relative w-full md:w-64"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[#8b8c83]" /><input value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Search furniture" placeholder="Search furniture..." suppressHydrationWarning className="w-full rounded-full border border-[#d8d8ce] bg-[#f8f7f3] py-3 pl-11 pr-4 text-sm outline-none transition focus:border-[#1f3b36]" /></div></div>
             <div className="mt-9 flex gap-2 overflow-x-auto pb-2" role="tablist" aria-label="Furniture categories">{categories.map((category) => { const count = category === 'All furniture' ? products.length : products.filter((product) => product.category === category).length; return <button key={category} role="tab" aria-selected={activeCategory === category} onClick={() => setActiveCategory(category)} className={`inline-flex items-center gap-2 whitespace-nowrap rounded-full px-5 py-2.5 text-sm font-medium transition ${activeCategory === category ? 'bg-[#1f3b36] text-white' : 'border border-[#d6d6cc] text-[#686a61] hover:bg-white'}`}>{category}<span className={`rounded-full px-2 py-0.5 text-xs ${activeCategory === category ? 'bg-white/15 text-white' : 'bg-[#e9e8e1] text-[#686a61]'}`} aria-label={`${count} products`}>{count}</span></button> })}</div>
-            <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">{filteredProducts.map((product) => <article key={product.name} className="group"><div className={`relative aspect-[0.92] overflow-hidden rounded-2xl ${product.color}`}><img src={product.image} alt={product.name} className="size-full object-cover transition duration-500 group-hover:scale-105" /><button onClick={() => setFavorites((items) => items.includes(product.name) ? items.filter((item) => item !== product.name) : [...items, product.name])} className="absolute right-3 top-3 flex size-9 items-center justify-center rounded-full bg-white/85 text-[#1f3b36] backdrop-blur-sm" aria-label={`Save ${product.name}`}>{<Heart fill={favorites.includes(product.name) ? 'currentColor' : 'none'} className={favorites.includes(product.name) ? 'text-[#b4823e]' : ''} />}</button><span className="absolute bottom-3 left-3 rounded-full bg-white/90 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-[#1f3b36]">{product.category}</span></div><div className="mt-4 flex items-start justify-between gap-3"><div><h3 className="font-serif text-xl text-[#1f3b36]">{product.name}</h3><p className="mt-1 text-sm text-[#777970]">by {product.maker}</p></div><p className="whitespace-nowrap pt-1 text-sm font-semibold text-[#b4823e]">{product.price ?? 'Contact for price'}</p></div><div className="mt-4 flex items-center justify-between gap-2"><span className={`inline-flex items-center gap-1.5 text-xs font-semibold ${product.quantity === 0 ? 'text-[#a34535]' : 'text-[#3b765d]'}`}><PackageCheck data-icon="inline-start" />{product.quantity === undefined ? product.availability ?? 'Made to order' : product.quantity > 0 ? `Available · ${product.quantity}` : 'Out of stock'}</span>{viewMode === 'customer' && <button disabled={product.quantity === 0} onClick={() => setCart((items) => items.includes(product.name) ? items : [...items, product.name])} className="inline-flex items-center gap-1.5 rounded-full bg-[#1f3b36] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#2d5049] disabled:cursor-not-allowed disabled:bg-[#85867d]"><ShoppingBag data-icon="inline-start" />{product.quantity === 0 ? 'Unavailable' : cart.includes(product.name) ? 'Added' : 'Add to cart'}</button>}</div></article>)}</div>
+            <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">{filteredProducts.map((product) => <article key={product.id ?? product.name} className="group"><div className={`relative aspect-[0.92] overflow-hidden rounded-2xl ${product.color}`}><img src={product.image} alt={product.name} className="size-full object-cover transition duration-500 group-hover:scale-105" />{product.imageIsFallback && <span className="absolute left-3 top-3 rounded-full bg-white/90 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-[#686a61]">Workshop photo pending</span>}<button onClick={() => setFavorites((items) => items.includes(product.name) ? items.filter((item) => item !== product.name) : [...items, product.name])} className="absolute right-3 top-3 flex size-9 items-center justify-center rounded-full bg-white/85 text-[#1f3b36] backdrop-blur-sm" aria-label={`Save ${product.name}`}>{<Heart fill={favorites.includes(product.name) ? 'currentColor' : 'none'} className={favorites.includes(product.name) ? 'text-[#b4823e]' : ''} />}</button><span className="absolute bottom-3 left-3 rounded-full bg-white/90 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-[#1f3b36]">{product.category}</span></div><div className="mt-4 flex items-start justify-between gap-3"><div><h3 className="font-serif text-xl text-[#1f3b36]">{product.name}</h3><p className="mt-1 text-sm text-[#777970]">by {product.maker}</p></div><p className="whitespace-nowrap pt-1 text-sm font-semibold text-[#b4823e]">{product.price ?? 'Contact for price'}</p></div><div className="mt-4 flex items-center justify-between gap-2"><span className={`inline-flex items-center gap-1.5 text-xs font-semibold ${product.quantity === 0 ? 'text-[#a34535]' : 'text-[#3b765d]'}`}><PackageCheck data-icon="inline-start" />{product.quantity === undefined ? product.availability ?? 'Made to order' : product.quantity > 0 ? `Available · ${product.quantity}` : 'Out of stock'}</span>{viewMode === 'customer' && <button disabled={product.quantity === 0} onClick={() => setCart((items) => items.includes(product.name) ? items : [...items, product.name])} className="inline-flex items-center gap-1.5 rounded-full bg-[#1f3b36] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#2d5049] disabled:cursor-not-allowed disabled:bg-[#85867d]"><ShoppingBag data-icon="inline-start" />{product.quantity === 0 ? 'Unavailable' : cart.includes(product.name) ? 'Added' : 'Add to cart'}</button>}</div></article>)}</div>
             {filteredProducts.length === 0 && <p className="py-14 text-center text-[#777970]">No pieces found. Try a different search.</p>}
             <div className="mt-12 text-center"><button className="inline-flex items-center gap-2 text-sm font-semibold text-[#1f3b36] underline decoration-[#d2ad6f] underline-offset-8">View all furniture <ArrowRight /></button></div>
           </div>
@@ -238,24 +237,26 @@ export default function Page() {
               <h2 className="mx-auto mt-4 font-serif text-4xl tracking-tight text-[#1f3b36] md:text-5xl">Your workshop deserves to be <em className="font-normal text-[#b4823e]">seen.</em></h2>
               <p className="mx-auto mt-5 leading-7 text-[#777970]">Tell us about your workshop and attach a product catalogue or product images to get started.</p>
             </div>
-            <form onSubmit={handleWorkshopSubmit} className="mt-10 rounded-3xl border border-[#dfdfd6] bg-[#f8f7f3] p-6 sm:p-9">
+            <form ref={formRef} onSubmit={handleWorkshopSubmit} className="mt-10 rounded-3xl border border-[#dfdfd6] bg-[#f8f7f3] p-6 sm:p-9">
               <div className="grid gap-5 sm:grid-cols-2">
                 <label className="flex flex-col gap-2 text-sm font-semibold text-[#1f3b36]">Company / workshop name<input required name="companyName" autoComplete="organization" placeholder="e.g. El Nasr Furniture Workshop" className="rounded-xl border border-[#d8d8ce] bg-white px-4 py-3 font-normal outline-none focus:border-[#1f3b36]" /></label>
                 <label className="flex flex-col gap-2 text-sm font-semibold text-[#1f3b36]">Workshop size<select required name="workshopSize" defaultValue="" className="rounded-xl border border-[#d8d8ce] bg-white px-4 py-3 font-normal outline-none focus:border-[#1f3b36]"><option value="" disabled>Select workshop size</option><option>1–5 employees</option><option>6–20 employees</option><option>21–50 employees</option><option>More than 50 employees</option></select></label>
                 <label className="flex flex-col gap-2 text-sm font-semibold text-[#1f3b36]">Governorate<input required name="governorate" autoComplete="address-level1" placeholder="Damietta" className="rounded-xl border border-[#d8d8ce] bg-white px-4 py-3 font-normal outline-none focus:border-[#1f3b36]" /></label>
                 <label className="flex flex-col gap-2 text-sm font-semibold text-[#1f3b36]">City / area<input required name="city" autoComplete="address-level2" placeholder="Damietta, New Damietta, or nearby area" className="rounded-xl border border-[#d8d8ce] bg-white px-4 py-3 font-normal outline-none focus:border-[#1f3b36]" /></label>
                 <label className="flex flex-col gap-2 text-sm font-semibold text-[#1f3b36] sm:col-span-2">Detailed workshop address<textarea required name="address" autoComplete="street-address" rows={3} placeholder="Street, building, district, and a helpful landmark" className="resize-y rounded-xl border border-[#d8d8ce] bg-white px-4 py-3 font-normal outline-none focus:border-[#1f3b36]" /></label>
-                <label className="flex flex-col gap-2 text-sm font-semibold text-[#1f3b36] sm:col-span-2">Attach product catalogue or images <span className="font-normal text-[#777970]">Excel, CSV, PDF, or product images; you can select multiple files.</span><input name="productFiles" type="file" multiple accept=".xlsx,.xls,.csv,.pdf,image/*" onChange={(event) => { setAttachmentNames(Array.from(event.target.files ?? []).map((file) => file.name)); setWorkshopMessage('') }} className="rounded-xl border border-dashed border-[#c8c8bd] bg-white px-4 py-4 text-sm file:mr-4 file:rounded-full file:border-0 file:bg-[#e8c98b] file:px-4 file:py-2 file:text-sm file:font-semibold file:text-[#1f3b36]" aria-describedby="product-files-help" /></label>
+                <label className="flex flex-col gap-2 text-sm font-semibold text-[#1f3b36] sm:col-span-2">Product catalogue <span className="font-normal text-[#777970]">Attach one CSV or Excel catalogue (required) and optional PDF or product images.</span><input required name="productFiles" type="file" multiple accept=".xlsx,.xls,.csv,.pdf,.jpg,.jpeg,.png,.webp" onChange={(event) => { setAttachmentNames(Array.from(event.target.files ?? []).map((file) => file.name)); setWorkshopMessage(''); setWorkshopError('') }} className="rounded-xl border border-dashed border-[#c8c8bd] bg-white px-4 py-4 text-sm file:mr-4 file:rounded-full file:border-0 file:bg-[#e8c98b] file:px-4 file:py-2 file:text-sm file:font-semibold file:text-[#1f3b36]" aria-describedby="product-files-help" /></label>
               </div>
-              <p id="product-files-help" className="mt-3 text-xs leading-5 text-[#777970]">Selected files: {attachmentNames.length ? attachmentNames.join(', ') : 'none yet'}. Files and form details are not uploaded or saved in this preview.</p>
-              <button type="submit" className="mt-6 inline-flex items-center gap-2 rounded-full bg-[#1f3b36] px-6 py-3.5 text-sm font-semibold text-white transition hover:bg-[#2d5049]">Preview workshop profile <ArrowRight data-icon="inline-end" /></button>
+              <p id="product-files-help" className="mt-3 text-xs leading-5 text-[#777970]">CSV and Excel files can contain up to 2,000 products. Use columns such as Name, Quantity or On Hand Quantity, Category, Sales Price, Vendor, Image URL, and Description. Each file is limited to 4 MB; total upload is limited to 4 MB.</p>
+              <p className="mt-2 break-words text-xs text-[#777970]">Selected files: {attachmentNames.length ? attachmentNames.join(', ') : 'none yet'}</p>
+              <button type="submit" disabled={isSubmitting} aria-busy={isSubmitting} className="mt-6 inline-flex items-center gap-2 rounded-full bg-[#1f3b36] px-6 py-3.5 text-sm font-semibold text-white transition hover:bg-[#2d5049] disabled:cursor-wait disabled:opacity-60">{isSubmitting ? 'Submitting request…' : 'Submit workshop request'} <ArrowRight data-icon="inline-end" /></button>
               {workshopMessage && <p role="status" className="mt-4 text-sm font-medium text-[#1f3b36]">{workshopMessage}</p>}
+              {workshopError && <p role="alert" className="mt-4 text-sm font-medium text-red-800">{workshopError}</p>}
             </form>
           </div>
         </section>
       </main>
 
-      <footer className="border-t border-[#dfdfd6]"><div className="mx-auto flex max-w-[1240px] flex-col gap-5 px-5 py-8 text-sm text-[#777970] sm:flex-row sm:items-center sm:justify-between lg:px-8"><div className="flex items-center gap-2 font-serif text-xl text-[#1f3b36]">Jozzor Damietta Marketable plus <span className="font-sans text-xs text-[#999a91]">© 2026</span></div><div className="flex gap-6"><a href="#story" className="hover:text-[#1f3b36]">About</a><a href="mailto:hello@Jozzor Damietta Marketable plus.co" className="hover:text-[#1f3b36]">Contact</a><a href="#" className="hover:text-[#1f3b36]">Instagram</a></div></div></footer>
+      <footer className="border-t border-[#dfdfd6]"><div className="mx-auto flex max-w-[1240px] flex-col gap-5 px-5 py-8 text-sm text-[#777970] sm:flex-row sm:items-center sm:justify-between lg:px-8"><div className="flex items-center gap-2 font-serif text-xl text-[#1f3b36]">Jozzor Damietta Marketable plus <span className="font-sans text-xs text-[#999a91]">© 2026</span></div><div className="flex gap-6"><a href="#story" className="hover:text-[#1f3b36]">About</a><a href="#sell" className="hover:text-[#1f3b36]">Contact</a><a href="/admin/sign-in" className="hover:text-[#1f3b36]">Workshop review</a><a href="#" className="hover:text-[#1f3b36]">Instagram</a></div></div></footer>
     </div>
   )
 }

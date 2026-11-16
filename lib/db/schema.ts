@@ -38,7 +38,7 @@ export const workshopRequestAttachments = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
   },
   (table) => [
-    uniqueIndex('workshop_request_attachments_pathname_idx').on(table.pathname),
+    uniqueIndex('workshop_request_attachments_pathname_key').on(table.pathname),
     index('workshop_request_attachments_request_idx').on(table.requestId),
   ],
 )
@@ -53,7 +53,7 @@ export const marketplaceProducts = pgTable(
     category: text('category').notNull(),
     price: text('price'),
     quantity: integer('quantity').notNull(),
-    imageUrl: text('image_url').notNull(),
+    imageUrl: text('image_url'),
     description: text('description'),
     published: boolean('published').notNull().default(false),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),

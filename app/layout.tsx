@@ -4,7 +4,7 @@ import './globals.css'
 
 export const metadata: Metadata = {
   title: 'Jozzor Damietta Marketable plus — Made in Damietta',
-  description: 'Discover beautiful, handcrafted furniture made by independent workshops in Damietta, Egypt.',
+  description: 'Discover handcrafted furniture from Damietta workshops, or submit a product catalogue for review on Jozzor Damietta Marketable plus.',
   generator: 'v0.app',
   icons: {
     icon: [
@@ -28,8 +28,8 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   colorScheme: 'light dark',
   themeColor: [
-    { media: '(prefers-color-scheme: light)', color: 'white' },
-    { media: '(prefers-color-scheme: dark)', color: 'black' },
+    { media: '(prefers-color-scheme: light)', color: '#f8f7f3' },
+    { media: '(prefers-color-scheme: dark)', color: '#1f3b36' },
   ],
 }
 

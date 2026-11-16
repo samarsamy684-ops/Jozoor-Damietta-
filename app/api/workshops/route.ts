@@ -1,6 +1,7 @@
 import { del, put } from '@vercel/blob'
 import { NextRequest, NextResponse } from 'next/server'
 import * as XLSX from 'xlsx'
+import { hasSameOrigin } from '@/lib/auth/origin'
 import { db } from '@/lib/db'
 import { marketplaceProducts, workshopRequestAttachments, workshopRequests } from '@/lib/db/schema'
 
@@ -8,7 +9,16 @@ export const runtime = 'nodejs'
 
 const MAX_FILE_SIZE = 4 * 1024 * 1024
 const MAX_FILES = 8
-const allowedExtensions = new Set(['csv', 'xlsx', 'xls', 'pdf', 'jpg', 'jpeg', 'png', 'webp'])
+const contentTypeByExtension: Record<string, string> = {
+  csv: 'text/csv; charset=utf-8',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  xls: 'application/vnd.ms-excel',
+  pdf: 'application/pdf',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  webp: 'image/webp',
+}
 const productCategories = ['Living room', 'Dining', 'Bedroom', 'Office'] as const
 
 type ParsedProduct = {
@@ -54,7 +64,7 @@ async function parseSpreadsheet(file: File, workshopName: string): Promise<Parse
       throw new Error(`Row ${index + 2} needs a product name in the Name or Product Name column.`)
     }
 
-    const quantityRaw = read('quantity', 'on hand quantity', 'qty on hand', 'available quantity', 'stock', 'qty available')
+    const quantityRaw = read('quantity', 'on hand quantity', 'qty on hand', 'available quantity', 'stock', 'qty available', 'available stock', 'quantity on hand')
     const quantityText = String(quantityRaw ?? '0').replace(/,/g, '').trim()
     const quantity = Number(quantityText)
     if (!Number.isSafeInteger(quantity) || quantity < 0) {
@@ -80,8 +90,8 @@ async function parseSpreadsheet(file: File, workshopName: string): Promise<Parse
 
     products.push({
       name,
-      maker: String(read('manufacturer', 'maker', 'vendor') ?? workshopName).trim().slice(0, 160) || workshopName,
-      category: normalizeCategory(read('category', 'product category')),
+      maker: String(read('manufacturer', 'maker', 'vendor', 'vendor name', 'seller', 'supplier') ?? workshopName).trim().slice(0, 160) || workshopName,
+      category: normalizeCategory(read('category', 'product category', 'product category name', 'category name', 'product category/complete name')),
       price,
       quantity,
       imageUrl,
@@ -100,6 +110,8 @@ function safeFilename(value: string) {
 }
 
 export async function POST(request: NextRequest) {
+  if (!hasSameOrigin(request)) return NextResponse.json({ error: 'Invalid request origin.' }, { status: 403 })
+
   const uploadedPathnames: string[] = []
 
   try {
@@ -131,7 +143,7 @@ export async function POST(request: NextRequest) {
     }
     for (const file of files) {
       const extension = file.name.split('.').pop()?.toLowerCase()
-      if (!extension || !allowedExtensions.has(extension)) {
+      if (!extension || !contentTypeByExtension[extension]) {
         return NextResponse.json({ error: `The file “${safeFilename(file.name)}” has an unsupported type.` }, { status: 400 })
       }
     }
@@ -142,16 +154,18 @@ export async function POST(request: NextRequest) {
 
     for (const file of files) {
       const filename = safeFilename(file.name)
+      const extension = file.name.split('.').pop()?.toLowerCase() ?? ''
+      const contentType = contentTypeByExtension[extension]
       const blob = await put(`workshop-submissions/${requestId}/${filename}`, file, {
         access: 'private',
         addRandomSuffix: true,
-        contentType: file.type || 'application/octet-stream',
+        contentType,
       })
       uploadedPathnames.push(blob.pathname)
       attachments.push({
         pathname: blob.pathname,
         filename,
-        contentType: file.type || 'application/octet-stream',
+        contentType,
         sizeBytes: file.size,
       })
     }
